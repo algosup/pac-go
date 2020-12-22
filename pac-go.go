@@ -2,276 +2,241 @@ package main
 
 import (
 	"math/rand"
+	"time"
 
 	"github.com/algosup/game"
 	"github.com/algosup/game/key"
 )
 
-const pixelWidth = 500
-const pixelHeight = 480
-const pixelSize = 20
-
-const start = `
- xxxxxxxxxxxxxxxxxxxxxxx
- x..........x..........x
- x.xxx.xxxx.x.xxxx.xxx.x
- x.xxx.xxxx.x.xxxx.xxx.x
- x.....................x
- x.xxx.x.xxxxxxx.x.xxx.x
- x.....x....x....x.....x
- xxxxx.xxxx.x.xxxx.xxxxx
- xxxxx.x.........x.xxxxx
- xxxxx.x.xxxxxxx.x.xxxxx
- x.......x     x.......x
- xxxxx.x.xxxxxxx.x.xxxxx
- xxxxx.x.........x.xxxxx
- xxxxx.x.xxxxxxx.x.xxxxx
- x..........x..........x
- x.xxx.xxxx.x.xxxx.xxx.x
- x...x.............x...x
- xxx.x.x.xxxxxxx.x.x.xxx
- x.....x....x....x.....x
- x.xxxxxxxx.x.xxxxxxxx.x
- x.....................x
- xxxxxxxxxxxxxxxxxxxxxxx
-`
-
-var playground [][]rune
-
 type sprite struct {
-	direction     direction
-	nextDirection direction
-	isMoving      bool
-	x             int
-	y             int
-	bitmapIndex   int
+	x          int
+	y          int
+	deltaX     int
+	deltaY     int
+	nextDeltaX int
+	nextDeltaY int
+	bitmap     int
 }
 
-var p = &sprite{
-	direction:     right,
-	nextDirection: left,
-	x:             2 * pixelSize,
-	y:             2 * pixelSize,
-	bitmapIndex:   0,
+var pac = &sprite{
+	bitmap: pacRight,
 }
-
-var ghosts []*sprite = []*sprite{
+var ghosts = []*sprite{
 	{
-		direction:   right,
-		isMoving:    true,
-		x:           10 * pixelSize,
-		y:           13 * pixelSize,
-		bitmapIndex: redGhost,
+		bitmap: ghost,
 	},
 	{
-		direction:   right,
-		isMoving:    true,
-		x:           10 * pixelSize,
-		y:           13 * pixelSize,
-		bitmapIndex: redGhost,
+		bitmap: ghost,
 	},
 	{
-		direction:   right,
-		isMoving:    true,
-		x:           10 * pixelSize,
-		y:           13 * pixelSize,
-		bitmapIndex: redGhost,
+		bitmap: ghost,
 	},
 	{
-		direction:   right,
-		isMoving:    true,
-		x:           10 * pixelSize,
-		y:           13 * pixelSize,
-		bitmapIndex: redGhost,
+		bitmap: ghost,
 	},
 	{
-		direction:   right,
-		isMoving:    true,
-		x:           10 * pixelSize,
-		y:           13 * pixelSize,
-		bitmapIndex: redGhost,
+		bitmap: ghost,
+	},
+	{
+		bitmap: ghost,
 	},
 }
 
-func makePlayground() {
-	playground = make([][]rune, 0)
-	row := make([]rune, 0)
+var frame = 0
 
-	for _, r := range start {
-		if r == '\n' {
-			playground = append(playground, row)
-			row = make([]rune, 0)
-		} else {
-			row = append(row, r)
+func place(s *sprite) {
+	h := len(playground)
+	w := len(playground[1])
+
+	for {
+		y := rand.Intn(h-4) + 2
+		x := rand.Intn(w-4) + 2
+		if playground[y][x] != 'x' {
+			s.x = pixelSize * x
+			s.y = pixelSize * y
+			return
 		}
 	}
 }
 
-func drawPlayground(surface game.Surface) {
-	var x = 0
-	var y = 0
-
+func isEmpty() bool {
 	for _, row := range playground {
-		for _, c := range row {
-
-			switch c {
-			case 'x':
-				game.DrawBitmap(surface, x, y, bitmaps[border])
-
-			case '.':
-				game.DrawBitmap(surface, x, y, bitmaps[dot])
+		for _, r := range row {
+			if r == '.' {
+				return false
 			}
-
-			x += pixelSize
 		}
-		x = 0
-		y += pixelSize
+	}
+
+	return true
+}
+
+func drawPlayground(surface game.Surface) {
+	for i, row := range playground {
+		for j, r := range row {
+			if r == 'x' {
+				game.DrawBitmap(surface, j*pixelSize, i*pixelSize, bitmaps[border])
+			}
+			if r == '.' {
+				game.DrawBitmap(surface, j*pixelSize, i*pixelSize, bitmaps[dot])
+			}
+		}
 	}
 }
 
 func drawSprite(surface game.Surface, s *sprite) {
-	game.DrawBitmap(surface, s.x, s.y, bitmaps[s.bitmapIndex])
+	game.DrawBitmap(surface, s.x, s.y, bitmaps[s.bitmap])
 }
 
+func drawPac(surface game.Surface) {
+	if pac.deltaX == 1 {
+		pac.bitmap = pacRight
+	}
+	if pac.deltaX == -1 {
+		pac.bitmap = pacLeft
+	}
+	if pac.deltaY == 1 {
+		pac.bitmap = pacDown
+	}
+	if pac.deltaY == -1 {
+		pac.bitmap = pacUp
+	}
+
+	game.DrawBitmap(surface, pac.x, pac.y, bitmaps[pac.bitmap+(frame/10)%2])
+}
 func draw(surface game.Surface) {
-	drawPlayground(surface)
-	drawSprite(surface, p)
-	for _, g := range ghosts {
-		drawSprite(surface, g)
+	frame++
+	if isEmpty() {
+		makePlayground(start2)
 	}
-
-	for _, g := range ghosts {
-		if p.x == g.x && p.y == g.y {
-			game.DrawText(surface, "GAME OVER", 0, 0)
-			return
-		}
-	}
-
-	move(p)
-	collect()
-
-	for _, g := range ghosts {
-		move(g)
-
-		if !g.isMoving {
-			g.nextDirection = direction(rand.Intn(4))
-		}
-	}
-
 	if key.IsPressed(key.Left) {
-		p.nextDirection = left
+		pac.nextDeltaX = -1
+		pac.nextDeltaY = 0
 	}
 	if key.IsPressed(key.Right) {
-		p.nextDirection = right
+		pac.nextDeltaX = 1
+		pac.nextDeltaY = 0
 	}
 	if key.IsPressed(key.Up) {
-		p.nextDirection = up
+		pac.nextDeltaX = 0
+		pac.nextDeltaY = -1
 	}
 	if key.IsPressed(key.Down) {
-		p.nextDirection = down
+		pac.nextDeltaX = 0
+		pac.nextDeltaY = 1
 	}
-}
 
-func move(p *sprite) {
-	if mustStop(p) {
-		p.isMoving = false
+	drawPlayground(surface)
+	drawPac(surface)
+	for _, s := range ghosts {
+		drawSprite(surface, s)
 	}
-	if p.isMoving {
-		switch p.direction {
-		case left:
-			p.x--
-		case right:
-			p.x++
-		case up:
-			p.y--
-		case down:
-			p.y++
+
+	for _, s := range ghosts {
+		if isTouchingPac(s) {
+			game.DrawText(surface, "GAMER OVER", 1, 1)
+			return
+		}
+		move(s)
+		stopIfBlocked(s)
+		tryToTurn(s)
+
+		if s.deltaX == 0 && s.deltaY == 0 {
+			switch rand.Intn(4) {
+			case 0:
+				s.nextDeltaX = 1
+				s.nextDeltaY = 0
+			case 1:
+				s.nextDeltaX = -1
+				s.nextDeltaY = 0
+			case 2:
+				s.nextDeltaX = 0
+				s.nextDeltaY = 1
+			case 3:
+				s.nextDeltaX = 0
+				s.nextDeltaY = -1
+			}
+
+		}
+
+		if isAligned(pac) {
+			playground[pac.y/pixelSize][pac.x/pixelSize] = ' '
 		}
 	}
 
-	if canChangeDirection(p) {
-		p.direction = p.nextDirection
-		p.isMoving = true
-	}
+	move(pac)
+
+	stopIfBlocked(pac)
+	tryToTurn(pac)
 }
 
-func collect() {
-	if p.x%pixelSize != 0 {
+func isTouchingPac(s *sprite) bool {
+	if pac.x < s.x && s.x-pac.x > 16 {
+		return false
+	}
+	if pac.x > s.x && pac.x-s.x > 16 {
+		return false
+	}
+	if pac.y < s.y && s.y-pac.y > 16 {
+		return false
+	}
+	if pac.y > s.y && pac.y-s.y > 16 {
+		return false
+	}
+	return true
+}
+
+func move(s *sprite) {
+	s.x = s.x + s.deltaX
+	s.y = s.y + s.deltaY
+}
+
+func isAligned(s *sprite) bool {
+	if s.x%pixelSize != 0 {
+		return false
+	}
+	if s.y%pixelSize != 0 {
+		return false
+	}
+	return true
+}
+
+func stopIfBlocked(s *sprite) {
+	if isAligned(s) == false {
 		return
 	}
+	var x = s.x / pixelSize
+	var y = s.y / pixelSize
+	if playground[y+s.deltaY][x+s.deltaX] == 'x' {
+		s.deltaX = 0
+		s.deltaY = 0
+	}
+}
 
-	if p.y%pixelSize != 0 {
+func tryToTurn(s *sprite) {
+	if isAligned(s) == false {
 		return
 	}
-
-	var r = p.y / pixelSize
-	var c = p.x / pixelSize
-
-	playground[r][c] = ' '
+	var x = s.x / pixelSize
+	var y = s.y / pixelSize
+	if playground[y+s.nextDeltaY][x+s.nextDeltaX] == 'x' {
+		return
+	}
+	s.deltaX = s.nextDeltaX
+	s.deltaY = s.nextDeltaY
 }
-
-func canChangeDirection(p *sprite) bool {
-	if p.x%pixelSize != 0 {
-		return false
-	}
-
-	if p.y%pixelSize != 0 {
-		return false
-	}
-
-	var r = p.y / pixelSize
-	var c = p.x / pixelSize
-
-	switch p.nextDirection {
-	case left:
-		c--
-	case right:
-		c++
-	case up:
-		r--
-	case down:
-		r++
-	}
-
-	if playground[r][c] == 'x' {
-		return false
-	} else {
-		return true
-	}
-}
-
-func mustStop(p *sprite) bool {
-	if p.x%pixelSize != 0 {
-		return false
-	}
-
-	if p.y%pixelSize != 0 {
-		return false
-	}
-
-	var r = p.y / pixelSize
-	var c = p.x / pixelSize
-
-	switch p.direction {
-	case left:
-		c--
-	case right:
-		c++
-	case up:
-		r--
-	case down:
-		r++
-	}
-
-	if playground[r][c] == 'x' {
-		return true
-	} else {
-		return false
-	}
-}
-
 func main() {
+	rand.Seed(time.Now().UTC().UnixNano())
+	makePlayground(start1)
+	place(pac)
+	for _, s := range ghosts {
+		for {
+			place(s)
+			if !isTouchingPac(s) {
+				break
+			}
+		}
+	}
 
-	game.Run("Pac-Man", pixelWidth, pixelHeight, draw)
-
+	game.Run("Pac-Go", pixelWidth, pixelHeight, draw)
 }
